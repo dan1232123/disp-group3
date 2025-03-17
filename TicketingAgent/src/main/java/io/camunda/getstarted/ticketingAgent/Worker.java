@@ -38,6 +38,8 @@ public class Worker {
                 System.out.println("Payment validation failed.");
             }
 
+            variables.put("validPaymentDetails", isValid);
+
             client.newCompleteCommand(job.getKey())
                     .variables(variables)
                     .send()
