@@ -34,11 +34,13 @@ public class Worker {
 
             if (isValid) {
                 System.out.println("Payment details are valid.");
+                variables.put("validPaymentDetails","1");
             } else {
                 System.out.println("Payment validation failed.");
+                variables.put("validPaymentDetails","0");
+                variables.put("Payment_Message", " Payment details are invalid.");
             }
 
-            variables.put("validPaymentDetails", isValid);
 
             client.newCompleteCommand(job.getKey())
                     .variables(variables)
