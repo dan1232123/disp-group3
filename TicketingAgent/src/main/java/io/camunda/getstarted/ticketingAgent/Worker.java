@@ -1,6 +1,5 @@
 package io.camunda.getstarted.ticketingAgent;
 
-import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,13 +31,22 @@ public class Worker {
         try {
             boolean isValid = validatePaymentDetails(paymentMethod, variablesAsMap, variables);
 
+            // Correctly setting the variable for BPMN
+            variables.put("validPaymentDetails", isValid ? "1" : "0");
+
             if (isValid) {
                 System.out.println("Payment details are valid.");
-                variables.put("validPaymentDetails","1");
             } else {
                 System.out.println("Payment validation failed.");
-                variables.put("validPaymentDetails","0");
-                variables.put("Payment_Message", " Payment details are invalid.");
+                variables.put("Payment_Message", "Payment details are invalid. Please re-enter.");
+
+                // 🔹 Reset payment fields for re-entry
+                variables.put("cardNumber", "");
+                variables.put("expirationDate", "");
+                variables.put("cvv", "");
+                variables.put("sortCode", "");
+                variables.put("accountNumber", "");
+                variables.put("payPalEmail", "");
             }
 
 
@@ -65,33 +73,30 @@ public class Worker {
                 String paypalEmail = (String) inputVars.get("payPalEmail");
                 isValid = validateEmail(paypalEmail);
                 outputVars.put("paypalEmail", paypalEmail);
-                outputVars.put("validPaypalEmail", isValid);
                 break;
 
-            case "bankTransfer":
+            case "banktransfer": // Ensure consistent case
                 String sortCode = (String) inputVars.get("sortCode");
                 String accountNumber = (String) inputVars.get("accountNumber");
                 isValid = validateBankDetails(sortCode, accountNumber);
                 outputVars.put("sortCode", sortCode);
                 outputVars.put("accountNumber", accountNumber);
-                outputVars.put("validBankDetails", isValid);
                 break;
 
             case "card":
                 String cardNumber = (String) inputVars.get("cardNumber");
-                String expiryMonth = (String) inputVars.get("expirationDate");
-                String expiryYear = (String) inputVars.get("expirationDate");
+                String expirationDate = (String) inputVars.get("expirationDate");
                 String cvv = (String) inputVars.get("cvv");
-                isValid = validateCardDetails(cardNumber, expiryMonth, expiryYear, cvv);
+                isValid = validateCardDetails(cardNumber, expirationDate, cvv);
                 outputVars.put("cardNumber", cardNumber);
-                outputVars.put("expiryMonth", expiryMonth);
-                outputVars.put("expiryYear", expiryYear);
+                outputVars.put("expirationDate", expirationDate);
                 outputVars.put("cvv", cvv);
-                outputVars.put("validCardDetails", isValid);
                 break;
 
             default:
                 System.out.println("Invalid payment method selected.");
+                outputVars.put("Payment_Message", "Invalid payment method.");
+                return false; // Exit early
         }
 
         return isValid;
@@ -106,9 +111,9 @@ public class Worker {
                 accountNumber != null && accountNumber.matches("\\d{8,12}");
     }
 
-    private boolean validateCardDetails(String cardNumber, String expiryMonth, String expiryYear, String cvv) {
+    private boolean validateCardDetails(String cardNumber, String expirationDate, String cvv) {
         return validateCardNumber(cardNumber) &&
-                validateExpiry(expiryMonth, expiryYear) &&
+                validateExpiry(expirationDate) &&
                 validateCVV(cvv);
     }
 
@@ -120,11 +125,15 @@ public class Worker {
         return cvv != null && cvv.matches("\\d{3,4}");
     }
 
-    private boolean validateExpiry(String expiryMonth, String expiryYear) {
+    private boolean validateExpiry(String expirationDate) {
         try {
-            int month = Integer.parseInt(expiryMonth);
-            int year = Integer.parseInt(expiryYear);
-            if (month < 1 || month > 12 || year < LocalDate.now().getYear()) {
+            String[] parts = expirationDate.split("-");
+            if (parts.length != 3) {
+                return false;
+            }
+            int year = Integer.parseInt(parts[0]);
+            int month = Integer.parseInt(parts[1]);
+            if (month < 1 || month > 12) {
                 return false;
             }
             return YearMonth.of(year, month).isAfter(YearMonth.now());

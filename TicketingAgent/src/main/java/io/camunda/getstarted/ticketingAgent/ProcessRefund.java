@@ -23,101 +23,76 @@ public class ProcessRefund {
     // Worker to process refunds
     @ZeebeWorker(type = "process_refund")
     public void processRefund(final JobClient client, final ActivatedJob job) {
-
-        // Extract process variables from Camunda
         Map<String, Object> variablesAsMap = job.getVariablesAsMap();
 
-        String cardName = (String) variablesAsMap.get("card_name"); // No validation needed
-        String cardNumber = (String) variablesAsMap.get("card_number");
-        String expiryDate = (String) variablesAsMap.get("expiry_date"); // Combined MM/YY format
-        String cvv = (String) variablesAsMap.get("cvv");
-        String refundAmount = (String) variablesAsMap.get("refund_amount"); // Refund amount to process
+        // Get the resolution choice
+        Object resolutionObj = variablesAsMap.get("resolutionChoice");
+        String resolutionChoice = resolutionObj != null ? resolutionObj.toString() : "";
+
+        // Get the original payment method
+        String paymentMethod = (String) variablesAsMap.get("originalPaymentMethod");
 
         Map<String, Object> variables = new HashMap<>();
-        variables.put("cardName", cardName);
-        variables.put("refundAmount", refundAmount);
+        variables.put("resolutionChoice", resolutionChoice);
+        variables.put("paymentMethod", paymentMethod);
 
-        try {
-            boolean isCardValid = validateCardNumber(cardNumber);
-            boolean isCVVValid = validateCVV(cvv);
-            boolean isExpiryValid = validateExpiry(expiryDate);
+        // Check if refund should be processed
+        if ("0".equals(resolutionChoice)) {
+            System.out.println("Processing full refund using " + paymentMethod + "...");
 
-            variables.put("validCard", isCardValid);
-            variables.put("validCVV", isCVVValid);
-            variables.put("validExpiry", isExpiryValid);
+            String refundAmount = (String) variablesAsMap.get("refund_amount");
+            variables.put("refundAmount", refundAmount);
 
-            if (isCardValid && isCVVValid && isExpiryValid) {
-                System.out.println("Refund approved for: " + refundAmount);
-            } else {
-                System.out.println("Refund failed due to invalid card details.");
-            }
+            try {
+                switch (paymentMethod.toLowerCase()) {
+                    case "card":
+                        variables.put("cardName", variablesAsMap.get("card_name"));
+                        variables.put("cardNumber", variablesAsMap.get("card_number"));
+                        variables.put("expiryDate", variablesAsMap.get("expiry_date"));
+                        variables.put("cvv", variablesAsMap.get("cvv"));
+                        break;
 
-            client.newCompleteCommand(job.getKey())
-                    .variables(variables)
-                    .send()
-                    .exceptionally(throwable -> {
-                        throw new RuntimeException("Could not complete job", throwable);
-                    });
+                    case "paypal":
+                        variables.put("payPalEmail", variablesAsMap.get("payPalEmail"));
+                        break;
 
-        } catch (Exception e) {
-            int retries = job.getRetries() - 1;
-            e.printStackTrace();
+                    case "banktransfer":
+                        variables.put("sortCode", variablesAsMap.get("sortCode"));
+                        variables.put("accountNumber", variablesAsMap.get("accountNumber"));
+                        break;
 
-            client.newFailCommand(job.getKey())
-                    .retries(retries)
-                    .send();
-        }
-    }
-
-    private boolean validateCardNumber(String cardNumber) {
-        if (cardNumber == null || !cardNumber.matches("\\d{13,19}")) {
-            return false;
-        }
-        return luhnCheck(cardNumber);
-    }
-
-    private boolean validateCVV(String cvv) {
-        return cvv != null && cvv.matches("\\d{3,4}");
-    }
-
-    private boolean validateExpiry(String expiryDate) {
-        if (expiryDate == null || !expiryDate.matches("^(0[1-9]|1[0-2])/(\\d{2}|\\d{4})$")) {
-            return false;
-        }
-
-        try {
-            String[] parts = expiryDate.split("/");
-            int month = Integer.parseInt(parts[0]);
-            int year = Integer.parseInt(parts[1]);
-
-            if (year < 100) {
-                year += 2000; // Convert 2-digit year to 4-digit
-            }
-
-            YearMonth expiry = YearMonth.of(year, month);
-            YearMonth currentMonth = YearMonth.now();
-            YearMonth nextWeek = currentMonth.plusMonths(1);
-
-            return expiry.isAfter(currentMonth) && expiry.isAfter(nextWeek);
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    private boolean luhnCheck(String cardNumber) {
-        int sum = 0;
-        boolean alternate = false;
-        for (int i = cardNumber.length() - 1; i >= 0; i--) {
-            int n = Character.getNumericValue(cardNumber.charAt(i));
-            if (alternate) {
-                n *= 2;
-                if (n > 9) {
-                    n -= 9;
+                    default:
+                        System.out.println("Invalid payment method found: " + paymentMethod);
+                        variables.put("refundStatus", "Failed - Invalid original payment method");
+                        break;
                 }
+
+                System.out.println("Refund approved for: " + refundAmount + " via " + paymentMethod);
+                variables.put("refundStatus", "Success");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                client.newFailCommand(job.getKey())
+                        .retries(job.getRetries() - 1)
+                        .send();
+                return;
             }
-            sum += n;
-            alternate = !alternate;
+
+        } else if ("1".equals(resolutionChoice)) {
+            // Skip refund and proceed to repair
+            System.out.println("Skipping refund. Proceeding with free follow-up repair.");
+            variables.put("refundSkipped", true);
+        } else {
+            System.out.println("Invalid resolution choice.");
+            variables.put("error", "Invalid resolution choice");
         }
-        return (sum % 10 == 0);
+
+        // Complete the task and update process variables
+        client.newCompleteCommand(job.getKey())
+                .variables(variables)
+                .send()
+                .exceptionally(throwable -> {
+                    throw new RuntimeException("Could not complete job", throwable);
+                });
     }
 }
