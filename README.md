@@ -1,4 +1,4 @@
-# 🚗 Car Repair Shop Case Study – BPM with Camunda
+# 🚗 Car Repair Shop Case Study – BPMN with Camunda
 
 This case study demonstrates how we modeled and automated a car repair shop's customer journey using **Camunda** for BPMN (Business Process Management Notation). The process includes all nesaccery operations — all backed by a custom database to track operations.
 
