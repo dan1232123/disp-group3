@@ -50,6 +50,7 @@ At our car repair shop, the customer's journey is designed to be smooth, transpa
 - **Camunda Platform** – BPMN modeling and process orchestration  
 - **SpringBoot** – Java Framework 
 - **Zeebe** – Java integration with Camunda
+- **Database** - Raw SQl
 
 ---
 
