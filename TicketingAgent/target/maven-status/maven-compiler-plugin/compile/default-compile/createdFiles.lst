@@ -1,0 +1,9 @@
+io/camunda/getstarted/ticketingAgent/RegistrationController.class
+io/camunda/getstarted/ticketingAgent/Member.class
+io/camunda/getstarted/ticketingAgent/ApplyDiscount.class
+io/camunda/getstarted/ticketingAgent/MemberRepository.class
+io/camunda/getstarted/ticketingAgent/ProcessRefund.class
+io/camunda/getstarted/ticketingAgent/MemberRegistrationDto.class
+io/camunda/getstarted/ticketingAgent/CheckMembership.class
+io/camunda/getstarted/ticketingAgent/PaymentStorageService.class
+io/camunda/getstarted/ticketingAgent/Worker.class

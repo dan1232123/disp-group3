@@ -1,16 +1,13 @@
 package io.camunda.getstarted.ticketingAgent;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.regex.Pattern;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
 import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.client.api.worker.JobClient;
 import io.camunda.zeebe.spring.client.EnableZeebeClient;
 import io.camunda.zeebe.spring.client.annotation.ZeebeWorker;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @SpringBootApplication
 @EnableZeebeClient
@@ -22,7 +19,6 @@ public class ApplyDiscount {
         Map<String, Object> variables = new HashMap<>();
 
 
-        // 🛠 Debugging: Print all received variables
         System.out.println("Received variables in apply_discount: " + variablesAsMap);
 
         try {

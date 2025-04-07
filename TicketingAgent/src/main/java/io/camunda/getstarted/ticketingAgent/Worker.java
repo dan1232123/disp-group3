@@ -1,68 +1,101 @@
 package io.camunda.getstarted.ticketingAgent;
 
-import java.time.YearMonth;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.regex.Pattern;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
 import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.client.api.worker.JobClient;
 import io.camunda.zeebe.spring.client.EnableZeebeClient;
 import io.camunda.zeebe.spring.client.annotation.ZeebeWorker;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+import java.time.YearMonth;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+import java.util.regex.Pattern;
 
 @SpringBootApplication
 @EnableZeebeClient
 public class Worker {
 
     @Autowired
-    private PaymentStorageService paymentStorageService;
+    private TransactionRepository transactionRepository;
+    @Autowired
+    private IssueRepository issueRepository;
 
     public static void main(String[] args) {
         SpringApplication.run(Worker.class, args);
     }
 
-    @ZeebeWorker(type = "collect_payment")
+    @ZeebeWorker(type = "collect_payment") // Handles job type of collect_payment
     public void processPayment(final JobClient client, final ActivatedJob job) {
         Map<String, Object> variablesAsMap = job.getVariablesAsMap();
         String paymentMethod = (String) variablesAsMap.get("paymentMethod");
         Map<String, Object> variables = new HashMap<>();
         variables.put("collect_payment", paymentMethod);
 
-        String checkMemberStr = variablesAsMap.get("check_member").toString();
-        boolean isMember = Boolean.parseBoolean(variablesAsMap.get("check_member").toString());
+        Random random = new Random();
+
+        String issueId = (String) variablesAsMap.get("issueId");
+
+        Boolean isMember = (boolean) variablesAsMap.get("isMember");
 
         try {
+            // Validates payment method
             boolean isValid = validatePaymentDetails(paymentMethod, variablesAsMap, variables);
             variables.put("validPaymentDetails", isValid ? "1" : "0");
 
+            Transaction newTransaction = new Transaction();
+
+            String name = (String) variablesAsMap.get("customerName");
+            String email = (String) variablesAsMap.get("customerEmailAddress");
+            String type = (String) variablesAsMap.get("type");
+            Integer amount = random.nextInt(100) + 1;
+
+            newTransaction.setCustomerName(name);
+            newTransaction.setCustomerEmailAddress(email);
+            newTransaction.setPaymentMethod(paymentMethod);
+            newTransaction.setTransactionDescription(type);
+            newTransaction.setIssueId(String.valueOf(issueId));
+
             if (isValid) {
-                String transactionId = UUID.randomUUID().toString();
-                variables.put("transactionId", transactionId);
-                paymentStorageService.savePaymentDetails(transactionId, variables);
-                System.out.println("Payment is valid,details saved with transaction ID: " + transactionId);
+                System.out.println("Payment is valid,details saved with transaction ID: " + newTransaction.getId());
+
+                // Update the relevant issue status
+                Issue issue = issueRepository.findById(issueId).orElse(null);
+                if (issue != null) {
+                    issue.setIssueStatus(type + " Paid");
+                    issueRepository.save(issue);
+                    System.out.println("Issue status updated to " + type + " paid");
+                } else {
+                    System.out.println("Issue not found with ID: " + issueId);
+                }
+
+                // Apply a 10% discount for members
                 if (isMember) {
+                    newTransaction.setAmount(String.valueOf(amount * 0.9));
 
                     variables.put("Payment_Message", "User is a Member, Discount Applied.\n" +
                             "Payment details are valid.");
+
                 } else {
                     variables.put("Payment_Message", "Payment details are valid.");
+                    newTransaction.setAmount(String.valueOf(amount));
                 }
+                newTransaction.setTransactionStatus("Completed");
+
+                // If validation fails
             } else {
                 System.out.println("Payment validation failed.");
+
                 if (isMember) {
-
                     variables.put("Payment_Message", "User is a Member.\n" + "Payment details are invalid please try again.");
-
 
                 } else {
                     variables.put("Payment_Message", "Payment details are invalid.");
                 }
 
+                newTransaction.setTransactionStatus("Failed");
                 // 🔹 Reset payment fields for re-entry
                 variables.put("cardNumber", "");
                 variables.put("expirationDate", "");
@@ -70,6 +103,15 @@ public class Worker {
                 variables.put("sortCode", "");
                 variables.put("accountNumber", "");
                 variables.put("payPalEmail", "");
+            }
+
+            // Save the transaction
+            transactionRepository.save(newTransaction);
+            System.out.println("New transaction created");
+
+            // Save the refund amount for the repairs
+            if (type == "repairs") {
+                variables.put("refundAmount", String.valueOf(amount));
             }
 
             client.newCompleteCommand(job.getKey())
@@ -87,6 +129,7 @@ public class Worker {
         }
     }
 
+    // Validates different payment methods with appropriate traces
     private boolean validatePaymentDetails(String paymentMethod, Map<String, Object> inputVars, Map<String, Object> outputVars) {
         boolean isValid = false;
 
